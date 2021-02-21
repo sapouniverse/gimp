@@ -603,9 +603,8 @@ save_resources (FILE      *fd,
   GList        *iter;
   gint          i;
   gchar        *fileName;            /* Image file name */
-  GimpLayer    *ActLayer;            /* The active layer */
-  guint         nActiveLayer = 0;    /* Number of the active layer */
-  gboolean      ActiveLayerPresent;  /* TRUE if there's an active layer */
+  GList        *SelLayers;           /* The selected layers */
+  GList        *nSelLayers = NULL;   /* Numbers of the selected layers */
 
   glong         eof_pos;             /* Position for End of file */
   glong         rsc_pos;             /* Position for Lengths of Resources section */
@@ -624,34 +623,40 @@ save_resources (FILE      *fd,
   fileName = g_file_get_path (gimp_image_get_file (image));
   IFDBG printf ("\tImage title: %s\n", fileName);
 
-  /* Get the active layer number id */
+  /* Get the selected layers */
 
-  ActLayer = gimp_image_get_active_layer (image);
-  IFDBG printf ("\tCurrent layer id: %d\n",
-                gimp_item_get_id (GIMP_ITEM (ActLayer)));
+  SelLayers = gimp_image_list_selected_layers (image);
 
-  ActiveLayerPresent = FALSE;
+  IFDBG printf ("\tSelected layer ids:");
+  IFDBG for (iter = SelLayers; iter; iter = iter->next)
+    IFDBG printf (" %d", gimp_item_get_id (GIMP_ITEM (iter->data)));
+  IFDBG printf ("\n");
+
   for (iter = PSDImageData.lLayers, i = 0;
        iter;
        iter = g_list_next (iter), i++)
     {
-      if (ActLayer == ((PSD_Layer *) iter->data)->layer)
+      if (g_list_find (SelLayers, ((PSD_Layer *) iter->data)->layer) != NULL)
         {
-          nActiveLayer = PSDImageData.nLayers - i - 1;
-          ActiveLayerPresent = TRUE;
-          break;
+          /* Map layers to their index in PSD. */
+          nSelLayers = g_list_prepend (nSelLayers,
+                                       GINT_TO_POINTER (PSDImageData.nLayers - i - 1));
+          if (g_list_length (nSelLayers) == g_list_length (SelLayers))
+            break;
         }
     }
+  g_list_free (SelLayers);
 
-  if (ActiveLayerPresent)
+  if (nSelLayers)
     {
-      IFDBG printf ("\t\tActive layer is number %d\n", nActiveLayer);
+      IFDBG printf ("\t\tSelected layers are numbers:");
+      IFDBG for (iter = nSelLayers; iter; iter = iter->next)
+        IFDBG printf (" %d", GPOINTER_TO_INT (iter->data));
     }
   else
     {
-      IFDBG printf ("\t\tNo active layer\n");
+      IFDBG printf ("\t\tNo selected layers\n");
     }
-
 
   /* Here's where actual writing starts */
 
@@ -848,9 +853,9 @@ save_resources (FILE      *fd,
     write_gint16 (fd, psd_unit, "height unit");
   }
 
-  /* --------------- Write Active Layer Number --------------- */
+  /* --------------- Write Selected Layer Number --------------- */
 
-  if (ActiveLayerPresent)
+  for (iter = nSelLayers; iter; iter = iter->next)
     {
       xfwrite (fd, "8BIM", 4, "imageresources signature");
       write_gint16 (fd, 0x0400, "0x0400 Id"); /* 1024 */
@@ -860,10 +865,11 @@ save_resources (FILE      *fd,
 
       /* Save title as gint16 (length always even) */
 
-      write_gint16 (fd, nActiveLayer, "active layer");
+      write_gint16 (fd, GPOINTER_TO_INT (iter->data), "active layer");
 
       IFDBG printf ("\tTotal length of 0x0400 resource: %d\n", (int) sizeof (gint16));
     }
+  g_list_free (nSelLayers);
 
   /* --------------- Write ICC profile data ------------------- */
   {

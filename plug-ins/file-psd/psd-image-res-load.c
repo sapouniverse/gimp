@@ -810,15 +810,18 @@ load_resource_1024 (const PSDimageres  *res_a,
                     FILE               *f,
                     GError            **error)
 {
+  guint16 layer_state;
+
   /* Load image layer state - current active layer counting from bottom up */
   IFDBG(2) g_debug ("Process image resource block: 1024: Layer State");
 
-  if (fread (&img_a->layer_state, 2, 1, f) < 1)
+  if (fread (&layer_state, 2, 1, f) < 1)
     {
       psd_set_error (feof (f), errno, error);
       return -1;
     }
-  img_a->layer_state = GUINT16_FROM_BE (img_a->layer_state);
+  layer_state = GUINT16_FROM_BE (layer_state);
+  img_a->layer_states = g_list_prepend (img_a->layer_states, GINT_TO_POINTER (layer_state));
 
   return 0;
 }
